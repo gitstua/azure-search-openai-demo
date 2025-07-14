@@ -6,6 +6,7 @@ import styles from "./Layout.module.css";
 import { useLogin } from "../../authConfig";
 
 import { LoginButton } from "../../components/LoginButton";
+import { Footer } from "../../components/Footer";
 import { IconButton } from "@fluentui/react";
 
 const Layout = () => {
@@ -75,7 +76,11 @@ const Layout = () => {
                 </div>
             </header>
 
-            <Outlet />
+            <main className={styles.main}>
+                <Outlet />
+            </main>
+
+            <Footer />
         </div>
     );
 };

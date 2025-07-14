@@ -1,4 +1,4 @@
- #!/bin/sh
+./scripts/prepdocs.sh #!/bin/sh
 
 . ./scripts/load_python_env.sh
 
@@ -9,4 +9,4 @@ if [ $# -gt 0 ]; then
   additionalArgs="$@"
 fi
 
-./.venv/bin/python ./app/backend/prepdocs.py './data/*' --verbose $additionalArgs
+./app/backend/.venv/bin/python ./app/backend/prepdocs.py './data/*' --verbose $additionalArgs
