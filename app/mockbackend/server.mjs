@@ -1,8 +1,22 @@
 import { createServer } from "node:http";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { extname, resolve, sep } from "node:path";
 import { parse } from "node:url";
 
 const PORT = Number(process.env.PORT || 50505);
 const HOST = process.env.HOST || "127.0.0.1";
+const STATIC_DIR = resolve(process.env.STATIC_DIR || "static");
+const MIME_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".txt": "text/plain; charset=utf-8",
+    ".map": "application/json; charset=utf-8"
+};
 
 const baseConfig = {
     defaultReasoningEffort: "minimal",
@@ -53,6 +67,44 @@ const authSetup = {
 function writeJson(res, statusCode, body) {
     res.writeHead(statusCode, { "Content-Type": "application/json" });
     res.end(JSON.stringify(body));
+}
+
+function safeFilePath(pathname) {
+    const candidate = resolve(STATIC_DIR, `.${pathname}`);
+    if (candidate === STATIC_DIR || candidate.startsWith(`${STATIC_DIR}${sep}`)) {
+        return candidate;
+    }
+    return null;
+}
+
+function serveStaticFile(req, res, filePath) {
+    const extension = extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[extension] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": contentType });
+    if (req.method === "HEAD") {
+        res.end();
+        return;
+    }
+    createReadStream(filePath).pipe(res);
+}
+
+function maybeServeStatic(req, pathname, res) {
+    const target = pathname === "/" ? "/index.html" : pathname;
+    const requestedPath = safeFilePath(target);
+
+    if (requestedPath && existsSync(requestedPath) && statSync(requestedPath).isFile()) {
+        serveStaticFile(req, res, requestedPath);
+        return true;
+    }
+
+    // For SPA routes, fall back to index.html when a direct file is not found.
+    const fallbackPath = safeFilePath("/index.html");
+    if (fallbackPath && existsSync(fallbackPath) && statSync(fallbackPath).isFile()) {
+        serveStaticFile(req, res, fallbackPath);
+        return true;
+    }
+
+    return false;
 }
 
 function readJsonBody(req) {
@@ -233,10 +285,14 @@ const server = createServer(async (req, res) => {
         return;
     }
 
+    if ((req.method === "GET" || req.method === "HEAD") && maybeServeStatic(req, pathname, res)) {
+        return;
+    }
+
     writeJson(res, 404, { error: `No mock route for ${req.method} ${pathname}` });
 });
 
 server.listen(PORT, HOST, () => {
     // Keep startup log concise so it is easy to scan in a terminal with frontend logs.
-    console.log(`mockbackend listening on http://${HOST}:${PORT}`);
+    console.log(`mockbackend listening on http://${HOST}:${PORT} (static dir: ${STATIC_DIR})`);
 });
