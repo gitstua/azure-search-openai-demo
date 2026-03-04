@@ -37,6 +37,14 @@ You can only run locally **after** having successfully run the `azd up` command.
 
 For CSS-only frontend work, you can skip Python/Azure dependencies and run the frontend against a minimal local Node backend:
 
+Windows:
+
+```powershell
+./app/start-mock.ps1
+```
+
+Linux/Mac:
+
 ```shell
 ./app/start-mock.sh
 ```
