@@ -3,6 +3,7 @@
 After deploying the app to Azure, you may want to continue development locally. This guide explains how to run the app locally, including hot reloading and debugging.
 
 * [Running development server from the command line](#running-development-server-from-the-command-line)
+* [Running frontend with mock backend](#running-frontend-with-mock-backend)
 * [Hot reloading frontend and backend files](#hot-reloading-frontend-and-backend-files)
 * [Using VS Code "Development" task](#using-vs-code-development-task)
 * [Using Copilot Chat Debug Mode](#using-copilot-chat-debug-mode)
@@ -31,6 +32,21 @@ You can only run locally **after** having successfully run the `azd up` command.
   ```
 
   VS Code: Run the "VS Code Task: Start App" task.
+
+## Running frontend with mock backend
+
+For CSS-only frontend work, you can skip Python/Azure dependencies and run the frontend against a minimal local Node backend:
+
+```shell
+./app/start-mock.sh
+```
+
+This script starts:
+
+* `app/mockbackend` on `http://127.0.0.1:50505` (stub `/config`, `/chat`, and related endpoints)
+* Vite frontend dev server from `app/frontend`
+
+Use this mode when you only need the UI running and do not need real retrieval/chat behavior.
 
 ## Hot reloading frontend and backend files
 
