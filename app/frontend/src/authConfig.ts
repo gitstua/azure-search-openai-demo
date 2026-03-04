@@ -52,13 +52,43 @@ interface AuthSetup {
     };
 }
 
+const DEFAULT_AUTH_SETUP: AuthSetup = {
+    useLogin: false,
+    requireAccessControl: false,
+    enableUnauthenticatedAccess: true,
+    msalConfig: {
+        auth: {
+            clientId: "",
+            authority: "",
+            redirectUri: "/redirect",
+            postLogoutRedirectUri: "/",
+            navigateToLoginRequestUrl: false
+        },
+        cache: {
+            cacheLocation: "localStorage",
+            storeAuthStateInCookie: false
+        }
+    },
+    loginRequest: {
+        scopes: []
+    },
+    tokenRequest: {
+        scopes: []
+    }
+};
+
 // Fetch the auth setup JSON data from the API if not already cached
 async function fetchAuthSetup(): Promise<AuthSetup> {
-    const response = await fetch("/auth_setup");
-    if (!response.ok) {
-        throw new Error(`auth setup response was not ok: ${response.status}`);
+    try {
+        const response = await fetch("/auth_setup");
+        if (!response.ok) {
+            throw new Error(`auth setup response was not ok: ${response.status}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.warn("Falling back to local no-auth setup because /auth_setup is unavailable.", error);
+        return DEFAULT_AUTH_SETUP;
     }
-    return await response.json();
 }
 
 const authSetup = await fetchAuthSetup();
@@ -119,27 +149,32 @@ const getAppServicesToken = (): Promise<AppServicesToken | null> => {
     }
 
     const getAppServicesTokenFromMe: () => Promise<AppServicesToken | null> = () => {
-        return fetch(appServicesAuthTokenUrl).then(r => {
-            if (r.ok) {
-                return r.json().then(json => {
-                    if (json.length > 0) {
-                        return {
-                            id_token: json[0]["id_token"] as string,
-                            access_token: json[0]["access_token"] as string,
-                            user_claims: json[0]["user_claims"].reduce((acc: Record<string, any>, item: Record<string, any>) => {
-                                acc[item.typ] = item.val;
-                                return acc;
-                            }, {}) as Record<string, any>,
-                            expires_on: json[0]["expires_on"] as string
-                        } as AppServicesToken;
-                    }
+        return fetch(appServicesAuthTokenUrl)
+            .then(r => {
+                if (r.ok) {
+                    return r.json().then(json => {
+                        if (json.length > 0) {
+                            return {
+                                id_token: json[0]["id_token"] as string,
+                                access_token: json[0]["access_token"] as string,
+                                user_claims: json[0]["user_claims"].reduce((acc: Record<string, any>, item: Record<string, any>) => {
+                                    acc[item.typ] = item.val;
+                                    return acc;
+                                }, {}) as Record<string, any>,
+                                expires_on: json[0]["expires_on"] as string
+                            } as AppServicesToken;
+                        }
 
-                    return null;
-                });
-            }
+                        return null;
+                    });
+                }
 
-            return null;
-        });
+                return null;
+            })
+            .catch(() => {
+                // If no backend is running (CSS-only local work), simply treat app services auth as unavailable.
+                return null;
+            });
     };
 
     return getAppServicesTokenFromMe().then(token => {
@@ -149,12 +184,14 @@ const getAppServicesToken = (): Promise<AppServicesToken | null> => {
                 return token;
             }
 
-            return fetch(appServicesAuthTokenRefreshUrl).then(r => {
-                if (r.ok) {
-                    return getAppServicesTokenFromMe();
-                }
-                return null;
-            });
+            return fetch(appServicesAuthTokenRefreshUrl)
+                .then(r => {
+                    if (r.ok) {
+                        return getAppServicesTokenFromMe();
+                    }
+                    return null;
+                })
+                .catch(() => null);
         }
 
         return null;

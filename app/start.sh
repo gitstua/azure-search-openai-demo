@@ -5,8 +5,17 @@
 cd "${0%/*}" || exit 1
 
 cd ../
-echo 'Creating python virtual environment ".venv"'
-python3 -m venv .venv
+if command -v python3.11 >/dev/null 2>&1; then
+    PYTHON_CMD="$(command -v python3.11)"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_CMD="$(command -v python3)"
+else
+    echo "Python 3 was not found. Install Python 3.11 (recommended) or ensure python3 is on PATH."
+    exit 1
+fi
+
+echo "Creating python virtual environment \".venv\" with $PYTHON_CMD"
+"$PYTHON_CMD" -m venv .venv
 
 echo ""
 echo "Restoring backend python packages"
@@ -16,6 +25,14 @@ echo ""
 out=$?
 if [ $out -ne 0 ]; then
     echo "Failed to restore backend python packages"
+    exit $out
+fi
+
+# azure-monitor-opentelemetry imports pkg_resources, removed from newer setuptools releases.
+./.venv/bin/python -m pip install "setuptools<81"
+out=$?
+if [ $out -ne 0 ]; then
+    echo "Failed to install setuptools<81"
     exit $out
 fi
 

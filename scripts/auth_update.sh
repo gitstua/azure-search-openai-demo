@@ -1,4 +1,4 @@
- #!/bin/sh
+#!/bin/sh
 
 AZURE_USE_AUTHENTICATION=$(azd env get-value AZURE_USE_AUTHENTICATION)
 if [ "$AZURE_USE_AUTHENTICATION" != "true" ]; then

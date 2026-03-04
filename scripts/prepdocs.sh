@@ -1,4 +1,4 @@
- #!/bin/sh
+#!/bin/sh
 
 USE_CLOUD_INGESTION=$(azd env get-value USE_CLOUD_INGESTION)
 if [ "$USE_CLOUD_INGESTION" = "true" ]; then
