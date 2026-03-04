@@ -9,14 +9,16 @@ from msgraph.generated.models.spa_application import SpaApplication
 from msgraph.generated.models.web_application import WebApplication
 
 from auth_common import get_application, test_authentication_enabled
+from load_azd_env import load_azd_env
 
 
 async def main():
+    load_azd_env()
     if not test_authentication_enabled():
         print("Not updating authentication.")
         exit(0)
 
-    auth_tenant = os.getenv("AZURE_AUTH_TENANT_ID", os.environ["AZURE_TENANT_ID"])
+    auth_tenant = (os.getenv("AZURE_AUTH_TENANT_ID") or os.getenv("AZURE_TENANT_ID") or "").strip()
     credential = AzureDeveloperCliCredential(tenant_id=auth_tenant)
 
     scopes = ["https://graph.microsoft.com/.default"]

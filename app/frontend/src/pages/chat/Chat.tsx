@@ -7,18 +7,7 @@ import readNDJSONStream from "ndjson-readablestream";
 import appLogo from "../../assets/applogo.svg";
 import styles from "./Chat.module.css";
 
-import {
-    chatApi,
-    configApi,
-    RetrievalMode,
-    ChatAppResponse,
-    ChatAppResponseOrError,
-    ChatAppRequest,
-    ResponseMessage,
-    VectorFields,
-    GPT4VInput,
-    SpeechConfig
-} from "../../api";
+import { chatApi, configApi, RetrievalMode, ChatAppResponse, ChatAppResponseOrError, ChatAppRequest, ResponseMessage, SpeechConfig } from "../../api";
 import { Answer, AnswerError, AnswerLoading } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -43,32 +32,34 @@ const Chat = () => {
     const [promptTemplate, setPromptTemplate] = useState<string>("");
     const [temperature, setTemperature] = useState<number>(0.3);
     const [seed, setSeed] = useState<number | null>(null);
-    const [minimumRerankerScore, setMinimumRerankerScore] = useState<number>(0);
+    const [minimumRerankerScore, setMinimumRerankerScore] = useState<number>(1.9);
     const [minimumSearchScore, setMinimumSearchScore] = useState<number>(0);
     const [retrieveCount, setRetrieveCount] = useState<number>(3);
-    const [maxSubqueryCount, setMaxSubqueryCount] = useState<number>(10);
-    const [resultsMergeStrategy, setResultsMergeStrategy] = useState<string>("interleaved");
+    const [agenticReasoningEffort, setRetrievalReasoningEffort] = useState<string>("minimal");
     const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>(RetrievalMode.Hybrid);
     const [useSemanticRanker, setUseSemanticRanker] = useState<boolean>(true);
     const [useQueryRewriting, setUseQueryRewriting] = useState<boolean>(false);
     const [reasoningEffort, setReasoningEffort] = useState<string>("");
     const [streamingEnabled, setStreamingEnabled] = useState<boolean>(true);
     const [shouldStream, setShouldStream] = useState<boolean>(true);
+    const previousShouldStreamRef = useRef<boolean>(true);
+    const forcedStreamingRef = useRef<boolean>(false);
     const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
     const [includeCategory, setIncludeCategory] = useState<string>("");
     const [excludeCategory, setExcludeCategory] = useState<string>("");
     const [useSuggestFollowupQuestions, setUseSuggestFollowupQuestions] = useState<boolean>(false);
-    const [vectorFields, setVectorFields] = useState<VectorFields>(VectorFields.TextAndImageEmbeddings);
-    const [useOidSecurityFilter, setUseOidSecurityFilter] = useState<boolean>(false);
-    const [useGroupsSecurityFilter, setUseGroupsSecurityFilter] = useState<boolean>(false);
-    const [gpt4vInput, setGPT4VInput] = useState<GPT4VInput>(GPT4VInput.TextAndImages);
-    const [useGPT4V, setUseGPT4V] = useState<boolean>(false);
+    const [searchTextEmbeddings, setSearchTextEmbeddings] = useState<boolean>(true);
+    const [searchImageEmbeddings, setSearchImageEmbeddings] = useState<boolean>(false);
+    const [sendTextSources, setSendTextSources] = useState<boolean>(true);
+    const [sendImageSources, setSendImageSources] = useState<boolean>(false);
 
     const lastQuestionRef = useRef<string>("");
     const chatMessageStreamEnd = useRef<HTMLDivElement | null>(null);
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isStreaming, setIsStreaming] = useState<boolean>(false);
+    const [abortController, setAbortController] = useState<AbortController | null>(null);
+    const [restoredQuestion, setRestoredQuestion] = useState<string>("");
     const [error, setError] = useState<unknown>();
 
     const [activeCitation, setActiveCitation] = useState<string>();
@@ -79,7 +70,7 @@ const Chat = () => {
     const [streamedAnswers, setStreamedAnswers] = useState<[user: string, response: ChatAppResponse][]>([]);
     const [speechUrls, setSpeechUrls] = useState<(string | null)[]>([]);
 
-    const [showGPT4VOptions, setShowGPT4VOptions] = useState<boolean>(false);
+    const [showMultimodalOptions, setShowMultimodalOptions] = useState<boolean>(false);
     const [showSemanticRankerOption, setShowSemanticRankerOption] = useState<boolean>(false);
     const [showQueryRewritingOption, setShowQueryRewritingOption] = useState<boolean>(false);
     const [showReasoningEffortOption, setShowReasoningEffortOption] = useState<boolean>(false);
@@ -92,7 +83,13 @@ const Chat = () => {
     const [showChatHistoryBrowser, setShowChatHistoryBrowser] = useState<boolean>(false);
     const [showChatHistoryCosmos, setShowChatHistoryCosmos] = useState<boolean>(false);
     const [showAgenticRetrievalOption, setShowAgenticRetrievalOption] = useState<boolean>(false);
-    const [useAgenticRetrieval, setUseAgenticRetrieval] = useState<boolean>(false);
+    const [webSourceSupported, setWebSourceSupported] = useState<boolean>(false);
+    const [webSourceEnabled, setWebSourceEnabled] = useState<boolean>(false);
+    const [sharePointSourceSupported, setSharePointSourceSupported] = useState<boolean>(false);
+    const [sharePointSourceEnabled, setSharePointSourceEnabled] = useState<boolean>(false);
+    const [useAgenticKnowledgeBase, setUseAgenticRetrieval] = useState<boolean>(false);
+    const [hideMinimalRetrievalReasoningOption, setHideMinimalRetrievalReasoningOption] = useState<boolean>(false);
+    const streamingDisabledByOverrides = useAgenticKnowledgeBase && webSourceEnabled;
 
     const audio = useRef(new Audio()).current;
     const [isPlaying, setIsPlaying] = useState(false);
@@ -107,9 +104,13 @@ const Chat = () => {
 
     const getConfig = async () => {
         configApi().then(config => {
-            setShowGPT4VOptions(config.showGPT4VOptions);
-            if (config.showGPT4VOptions) {
-                setUseGPT4V(true);
+            setShowMultimodalOptions(config.showMultimodalOptions);
+            if (config.showMultimodalOptions) {
+                // Initialize from server config so defaults match deployment settings
+                setSendTextSources(config.ragSendTextSources !== undefined ? config.ragSendTextSources : true);
+                setSendImageSources(config.ragSendImageSources);
+                setSearchTextEmbeddings(config.ragSearchTextEmbeddings);
+                setSearchImageEmbeddings(config.ragSearchImageEmbeddings);
             }
             setUseSemanticRanker(config.showSemanticRankerOption);
             setShowSemanticRankerOption(config.showSemanticRankerOption);
@@ -117,9 +118,6 @@ const Chat = () => {
             setShowQueryRewritingOption(config.showQueryRewritingOption);
             setShowReasoningEffortOption(config.showReasoningEffortOption);
             setStreamingEnabled(config.streamingEnabled);
-            if (!config.streamingEnabled) {
-                setShouldStream(false);
-            }
             if (config.showReasoningEffortOption) {
                 setReasoningEffort(config.defaultReasoningEffort);
             }
@@ -136,15 +134,27 @@ const Chat = () => {
             setShowChatHistoryCosmos(config.showChatHistoryCosmos);
             setShowAgenticRetrievalOption(config.showAgenticRetrievalOption);
             setUseAgenticRetrieval(config.showAgenticRetrievalOption);
+            setWebSourceSupported(config.webSourceEnabled);
+            setWebSourceEnabled(config.webSourceEnabled);
+            setSharePointSourceSupported(config.sharepointSourceEnabled);
+            setSharePointSourceEnabled(config.sharepointSourceEnabled);
             if (config.showAgenticRetrievalOption) {
                 setRetrieveCount(10);
             }
+            const defaultRetrievalEffort = config.defaultRetrievalReasoningEffort ?? "minimal";
+            setHideMinimalRetrievalReasoningOption(config.webSourceEnabled);
+            setRetrievalReasoningEffort(defaultRetrievalEffort);
         });
     };
 
-    const handleAsyncRequest = async (question: string, answers: [string, ChatAppResponse][], responseBody: ReadableStream<any>) => {
+    const handleAsyncRequest = async (question: string, answers: [string, ChatAppResponse][], responseBody: ReadableStream<any>, signal: AbortSignal) => {
         let answer: string = "";
-        let askResponse: ChatAppResponse = {} as ChatAppResponse;
+        let askResponse: ChatAppResponse = {
+            message: { content: "", role: "assistant" },
+            delta: { content: "", role: "assistant" },
+            context: { data_points: { text: [], images: [], citations: [] }, thoughts: [], followup_questions: null },
+            session_state: null
+        };
 
         const updateState = (newContent: string) => {
             return new Promise(resolve => {
@@ -162,6 +172,9 @@ const Chat = () => {
         try {
             setIsStreaming(true);
             for await (const event of readNDJSONStream(responseBody)) {
+                if (signal.aborted) {
+                    break;
+                }
                 if (event["context"] && event["context"]["data_points"]) {
                     event["message"] = event["delta"];
                     askResponse = event as ChatAppResponse;
@@ -174,6 +187,13 @@ const Chat = () => {
                 } else if (event["error"]) {
                     throw Error(event["error"]);
                 }
+            }
+        } catch (e) {
+            if (e instanceof DOMException && e.name === "AbortError") {
+                // User clicked stop - don't treat as error
+                console.log("Stream aborted by user");
+            } else {
+                throw e; // Re-throw other errors to be caught by makeApiRequest
             }
         } finally {
             setIsStreaming(false);
@@ -195,10 +215,43 @@ const Chat = () => {
     })();
     const historyManager = useHistoryManager(historyProvider);
 
+    const updateStreamingPreference = (isStreamingEnabledOverride: boolean, disablesStreamingOverride: boolean) => {
+        if (!isStreamingEnabledOverride) {
+            setShouldStream(current => {
+                if (!forcedStreamingRef.current) {
+                    previousShouldStreamRef.current = current;
+                }
+                forcedStreamingRef.current = true;
+                return current ? false : current;
+            });
+            return;
+        }
+
+        if (disablesStreamingOverride) {
+            setShouldStream(current => {
+                if (!forcedStreamingRef.current) {
+                    previousShouldStreamRef.current = current;
+                }
+                forcedStreamingRef.current = true;
+                return current ? false : current;
+            });
+            return;
+        }
+
+        forcedStreamingRef.current = false;
+        setShouldStream(current => {
+            const desiredShouldStream = previousShouldStreamRef.current;
+            return current === desiredShouldStream ? current : desiredShouldStream;
+        });
+    };
+
     const makeApiRequest = async (question: string) => {
+        const controller = new AbortController();
+        setAbortController(controller);
         lastQuestionRef.current = question;
 
         error && setError(undefined);
+        setRestoredQuestion("");
         setIsLoading(true);
         setActiveCitation(undefined);
         setActiveAnalysisPanelTab(undefined);
@@ -219,8 +272,7 @@ const Chat = () => {
                         include_category: includeCategory.length === 0 ? undefined : includeCategory,
                         exclude_category: excludeCategory.length === 0 ? undefined : excludeCategory,
                         top: retrieveCount,
-                        max_subqueries: maxSubqueryCount,
-                        results_merge_strategy: resultsMergeStrategy,
+                        ...(useAgenticKnowledgeBase ? { retrieval_reasoning_effort: agenticReasoningEffort } : {}),
                         temperature: temperature,
                         minimum_reranker_score: minimumRerankerScore,
                         minimum_search_score: minimumSearchScore,
@@ -230,13 +282,14 @@ const Chat = () => {
                         query_rewriting: useQueryRewriting,
                         reasoning_effort: reasoningEffort,
                         suggest_followup_questions: useSuggestFollowupQuestions,
-                        use_oid_security_filter: useOidSecurityFilter,
-                        use_groups_security_filter: useGroupsSecurityFilter,
-                        vector_fields: vectorFields,
-                        use_gpt4v: useGPT4V,
-                        gpt4v_input: gpt4vInput,
+                        search_text_embeddings: searchTextEmbeddings,
+                        search_image_embeddings: searchImageEmbeddings,
+                        send_text_sources: sendTextSources,
+                        send_image_sources: sendImageSources,
                         language: i18n.language,
-                        use_agentic_retrieval: useAgenticRetrieval,
+                        use_agentic_knowledgebase: useAgenticKnowledgeBase,
+                        use_web_source: webSourceSupported ? webSourceEnabled : false,
+                        use_sharepoint_source: sharePointSourceSupported ? sharePointSourceEnabled : false,
                         ...(seed !== null ? { seed: seed } : {})
                     }
                 },
@@ -244,7 +297,7 @@ const Chat = () => {
                 session_state: answers.length ? answers[answers.length - 1][1].session_state : null
             };
 
-            const response = await chatApi(request, shouldStream, token);
+            const response = await chatApi(request, shouldStream, token, controller.signal);
             if (!response.body) {
                 throw Error("No response body");
             }
@@ -252,11 +305,18 @@ const Chat = () => {
                 throw Error(`Request failed with status ${response.status}`);
             }
             if (shouldStream) {
-                const parsedResponse: ChatAppResponse = await handleAsyncRequest(question, answers, response.body);
-                setAnswers([...answers, [question, parsedResponse]]);
-                if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
-                    const token = client ? await getToken(client) : undefined;
-                    historyManager.addItem(parsedResponse.session_state, [...answers, [question, parsedResponse]], token);
+                const parsedResponse: ChatAppResponse = await handleAsyncRequest(question, answers, response.body, controller.signal);
+                // Only add to answers if we got content, otherwise restore question to input
+                if (parsedResponse.message.content) {
+                    setAnswers([...answers, [question, parsedResponse]]);
+                    if (typeof parsedResponse.session_state === "string" && parsedResponse.session_state !== "") {
+                        const token = client ? await getToken(client) : undefined;
+                        historyManager.addItem(parsedResponse.session_state, [...answers, [question, parsedResponse]], token);
+                    }
+                } else {
+                    // Stopped before any content arrived - restore question to input
+                    lastQuestionRef.current = answers.length > 0 ? answers[answers.length - 1][0] : "";
+                    setRestoredQuestion(question);
                 }
             } else {
                 const parsedResponse: ChatAppResponseOrError = await response.json();
@@ -271,9 +331,16 @@ const Chat = () => {
             }
             setSpeechUrls([...speechUrls, null]);
         } catch (e) {
-            setError(e);
+            if (e instanceof DOMException && e.name === "AbortError") {
+                // Stopped during loading - restore question to input
+                lastQuestionRef.current = answers.length > 0 ? answers[answers.length - 1][0] : "";
+                setRestoredQuestion(question);
+            } else {
+                setError(e);
+            }
         } finally {
             setIsLoading(false);
+            setAbortController(null);
         }
     };
 
@@ -287,6 +354,7 @@ const Chat = () => {
         setStreamedAnswers([]);
         setIsLoading(false);
         setIsStreaming(false);
+        setRestoredQuestion("");
     };
 
     useEffect(() => chatMessageStreamEnd.current?.scrollIntoView({ behavior: "smooth" }), [isLoading]);
@@ -294,6 +362,11 @@ const Chat = () => {
     useEffect(() => {
         getConfig();
     }, []);
+
+    // Preserve streaming preference when agentic retrieval forces streaming off.
+    useEffect(() => {
+        updateStreamingPreference(streamingEnabled, streamingDisabledByOverrides);
+    }, [streamingDisabledByOverrides, streamingEnabled]);
 
     const handleSettingsChange = (field: string, value: any) => {
         switch (field) {
@@ -315,12 +388,17 @@ const Chat = () => {
             case "retrieveCount":
                 setRetrieveCount(value);
                 break;
-            case "maxSubqueryCount":
-                setMaxSubqueryCount(value);
+            case "agenticReasoningEffort": {
+                setRetrievalReasoningEffort(value);
+                // If selecting minimal while web source is enabled, disable web source
+                if (value === "minimal" && webSourceEnabled) {
+                    setWebSourceEnabled(false);
+                    setHideMinimalRetrievalReasoningOption(false);
+                    // Web source was disabled, so restore streaming
+                    updateStreamingPreference(streamingEnabled, false);
+                }
                 break;
-            case "resultsMergeStrategy":
-                setResultsMergeStrategy(value);
-                break;
+            }
             case "useSemanticRanker":
                 setUseSemanticRanker(value);
                 break;
@@ -339,32 +417,69 @@ const Chat = () => {
             case "includeCategory":
                 setIncludeCategory(value);
                 break;
-            case "useOidSecurityFilter":
-                setUseOidSecurityFilter(value);
-                break;
-            case "useGroupsSecurityFilter":
-                setUseGroupsSecurityFilter(value);
-                break;
             case "shouldStream":
-                setShouldStream(value);
+                {
+                    const normalizedShouldStream = !!value;
+                    forcedStreamingRef.current = false;
+                    previousShouldStreamRef.current = normalizedShouldStream;
+                    setShouldStream(normalizedShouldStream);
+                }
                 break;
             case "useSuggestFollowupQuestions":
                 setUseSuggestFollowupQuestions(value);
                 break;
-            case "useGPT4V":
-                setUseGPT4V(value);
+            case "llmInputs":
                 break;
-            case "gpt4vInput":
-                setGPT4VInput(value);
+            case "sendTextSources":
+                setSendTextSources(value);
                 break;
-            case "vectorFields":
-                setVectorFields(value);
+            case "sendImageSources":
+                setSendImageSources(value);
+                break;
+            case "searchTextEmbeddings":
+                setSearchTextEmbeddings(value);
+                break;
+            case "searchImageEmbeddings":
+                setSearchImageEmbeddings(value);
                 break;
             case "retrievalMode":
                 setRetrievalMode(value);
                 break;
-            case "useAgenticRetrieval":
+            case "useAgenticKnowledgeBase": {
                 setUseAgenticRetrieval(value);
+                let effectiveWebSource = webSourceEnabled;
+                if (!value && webSourceEnabled) {
+                    effectiveWebSource = false;
+                    setWebSourceEnabled(false);
+                    setHideMinimalRetrievalReasoningOption(false);
+                }
+                // Only web source disables streaming
+                const shouldDisableStreaming = !!value && effectiveWebSource;
+                updateStreamingPreference(streamingEnabled, shouldDisableStreaming);
+                break;
+            }
+            case "useWebSource":
+                if (!webSourceSupported) {
+                    setWebSourceEnabled(false);
+                    return;
+                }
+                const normalizedWebSource = !!value;
+                setWebSourceEnabled(normalizedWebSource);
+                setHideMinimalRetrievalReasoningOption(normalizedWebSource);
+                // When enabling web source, disable follow-up questions and streaming
+                if (normalizedWebSource) {
+                    setUseSuggestFollowupQuestions(false);
+                }
+                const shouldDisableStreaming = useAgenticKnowledgeBase && normalizedWebSource;
+                updateStreamingPreference(streamingEnabled, shouldDisableStreaming);
+                break;
+            case "useSharePointSource":
+                if (!sharePointSourceSupported) {
+                    setSharePointSourceEnabled(false);
+                    return;
+                }
+                setSharePointSourceEnabled(!!value);
+                break;
         }
     };
 
@@ -391,6 +506,16 @@ const Chat = () => {
         }
 
         setSelectedAnswer(index);
+    };
+
+    const onStopClick = async () => {
+        try {
+            if (abortController) {
+                abortController.abort();
+            }
+        } catch (e) {
+            console.log("An error occurred trying to stop the stream: ", e);
+        }
     };
 
     const { t, i18n } = useTranslation();
@@ -423,7 +548,7 @@ const Chat = () => {
                             <h2 className={styles.chatEmptyStateSubtitle}>{t("chatEmptyStateSubtitle")}</h2>
                             {showLanguagePicker && <LanguagePicker onLanguageChange={newLang => i18n.changeLanguage(newLang)} />}
 
-                            <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
+                            <ExampleList onExampleClicked={onExampleClicked} useMultimodalAnswering={showMultimodalOptions} />
                         </div>
                     ) : (
                         <div className={styles.chatMessageStream}>
@@ -500,6 +625,10 @@ const Chat = () => {
                             disabled={isLoading}
                             onSend={question => makeApiRequest(question)}
                             showSpeechInput={showSpeechInput}
+                            isStreaming={isStreaming}
+                            isLoading={isLoading}
+                            onStop={onStopClick}
+                            initQuestion={restoredQuestion}
                         />
                     </div>
                 </div>
@@ -512,6 +641,7 @@ const Chat = () => {
                         citationHeight="810px"
                         answer={answers[selectedAnswer][1]}
                         activeTab={activeAnalysisPanelTab}
+                        onCitationClicked={c => onShowCitation(c, selectedAnswer)}
                     />
                 )}
 
@@ -542,8 +672,7 @@ const Chat = () => {
                         promptTemplate={promptTemplate}
                         temperature={temperature}
                         retrieveCount={retrieveCount}
-                        maxSubqueryCount={maxSubqueryCount}
-                        resultsMergeStrategy={resultsMergeStrategy}
+                        agenticReasoningEffort={agenticReasoningEffort}
                         seed={seed}
                         minimumSearchScore={minimumSearchScore}
                         minimumRerankerScore={minimumRerankerScore}
@@ -554,25 +683,28 @@ const Chat = () => {
                         excludeCategory={excludeCategory}
                         includeCategory={includeCategory}
                         retrievalMode={retrievalMode}
-                        useGPT4V={useGPT4V}
-                        gpt4vInput={gpt4vInput}
-                        vectorFields={vectorFields}
+                        showMultimodalOptions={showMultimodalOptions}
+                        sendTextSources={sendTextSources}
+                        sendImageSources={sendImageSources}
+                        searchTextEmbeddings={searchTextEmbeddings}
+                        searchImageEmbeddings={searchImageEmbeddings}
                         showSemanticRankerOption={showSemanticRankerOption}
                         showQueryRewritingOption={showQueryRewritingOption}
                         showReasoningEffortOption={showReasoningEffortOption}
-                        showGPT4VOptions={showGPT4VOptions}
                         showVectorOption={showVectorOption}
-                        useOidSecurityFilter={useOidSecurityFilter}
-                        useGroupsSecurityFilter={useGroupsSecurityFilter}
                         useLogin={!!useLogin}
                         loggedIn={loggedIn}
                         requireAccessControl={requireAccessControl}
                         shouldStream={shouldStream}
                         streamingEnabled={streamingEnabled}
                         useSuggestFollowupQuestions={useSuggestFollowupQuestions}
-                        showSuggestFollowupQuestions={true}
                         showAgenticRetrievalOption={showAgenticRetrievalOption}
-                        useAgenticRetrieval={useAgenticRetrieval}
+                        useAgenticKnowledgeBase={useAgenticKnowledgeBase}
+                        useWebSource={webSourceEnabled}
+                        showWebSourceOption={webSourceSupported}
+                        useSharePointSource={sharePointSourceEnabled}
+                        showSharePointSourceOption={sharePointSourceSupported}
+                        hideMinimalRetrievalReasoningOption={hideMinimalRetrievalReasoningOption}
                         onChange={handleSettingsChange}
                     />
                     {useLogin && <TokenClaimsDisplay />}

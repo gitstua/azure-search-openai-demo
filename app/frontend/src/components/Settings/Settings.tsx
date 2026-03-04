@@ -1,10 +1,9 @@
 import { useId } from "@fluentui/react-hooks";
 import { useTranslation } from "react-i18next";
-import { TextField, ITextFieldProps, Checkbox, ICheckboxProps, Dropdown, IDropdownProps, IDropdownOption } from "@fluentui/react";
+import { TextField, ITextFieldProps, Checkbox, ICheckboxProps, Dropdown, IDropdownProps, IDropdownOption, Stack } from "@fluentui/react";
 import { HelpCallout } from "../HelpCallout";
-import { GPT4VSettings } from "../GPT4VSettings";
 import { VectorSettings } from "../VectorSettings";
-import { RetrievalMode, VectorFields, GPT4VInput } from "../../api";
+import { RetrievalMode } from "../../api";
 import styles from "./Settings.module.css";
 
 // Add type for onRenderLabel
@@ -14,8 +13,7 @@ export interface SettingsProps {
     promptTemplate: string;
     temperature: number;
     retrieveCount: number;
-    maxSubqueryCount: number;
-    resultsMergeStrategy: string;
+    agenticReasoningEffort: string;
     seed: number | null;
     minimumSearchScore: number;
     minimumRerankerScore: number;
@@ -26,16 +24,15 @@ export interface SettingsProps {
     excludeCategory: string;
     includeCategory: string;
     retrievalMode: RetrievalMode;
-    useGPT4V: boolean;
-    gpt4vInput: GPT4VInput;
-    vectorFields: VectorFields;
+    sendTextSources: boolean;
+    sendImageSources: boolean;
+    searchTextEmbeddings: boolean;
+    searchImageEmbeddings: boolean;
     showSemanticRankerOption: boolean;
     showQueryRewritingOption: boolean;
     showReasoningEffortOption: boolean;
-    showGPT4VOptions: boolean;
+    showMultimodalOptions: boolean;
     showVectorOption: boolean;
-    useOidSecurityFilter: boolean;
-    useGroupsSecurityFilter: boolean;
     useLogin: boolean;
     loggedIn: boolean;
     requireAccessControl: boolean;
@@ -46,17 +43,20 @@ export interface SettingsProps {
     useSuggestFollowupQuestions?: boolean; // Only used in Chat
     promptTemplatePrefix?: string;
     promptTemplateSuffix?: string;
-    showSuggestFollowupQuestions?: boolean;
-    showAgenticRetrievalOption: boolean;
-    useAgenticRetrieval: boolean;
+    showAgenticRetrievalOption?: boolean;
+    useAgenticKnowledgeBase?: boolean;
+    hideMinimalRetrievalReasoningOption?: boolean;
+    useWebSource?: boolean;
+    showWebSourceOption?: boolean;
+    useSharePointSource?: boolean;
+    showSharePointSourceOption?: boolean;
 }
 
 export const Settings = ({
     promptTemplate,
     temperature,
     retrieveCount,
-    maxSubqueryCount,
-    resultsMergeStrategy,
+    agenticReasoningEffort,
     seed,
     minimumSearchScore,
     minimumRerankerScore,
@@ -67,16 +67,15 @@ export const Settings = ({
     excludeCategory,
     includeCategory,
     retrievalMode,
-    useGPT4V,
-    gpt4vInput,
-    vectorFields,
+    searchTextEmbeddings,
+    searchImageEmbeddings,
+    sendTextSources,
+    sendImageSources,
     showSemanticRankerOption,
     showQueryRewritingOption,
     showReasoningEffortOption,
-    showGPT4VOptions,
+    showMultimodalOptions,
     showVectorOption,
-    useOidSecurityFilter,
-    useGroupsSecurityFilter,
     useLogin,
     loggedIn,
     requireAccessControl,
@@ -87,9 +86,13 @@ export const Settings = ({
     useSuggestFollowupQuestions,
     promptTemplatePrefix,
     promptTemplateSuffix,
-    showSuggestFollowupQuestions,
     showAgenticRetrievalOption,
-    useAgenticRetrieval
+    useAgenticKnowledgeBase = false,
+    hideMinimalRetrievalReasoningOption = false,
+    useWebSource = false,
+    showWebSourceOption = false,
+    useSharePointSource = false,
+    showSharePointSourceOption = false
 }: SettingsProps) => {
     const { t } = useTranslation();
 
@@ -102,15 +105,18 @@ export const Settings = ({
     const seedFieldId = useId("seedField");
     const agenticRetrievalId = useId("agenticRetrieval");
     const agenticRetrievalFieldId = useId("agenticRetrievalField");
+    const webSourceId = useId("webSource");
+    const webSourceFieldId = useId("webSourceField");
+    const sharePointSourceId = useId("sharePointSource");
+    const sharePointSourceFieldId = useId("sharePointSourceField");
     const searchScoreId = useId("searchScore");
     const searchScoreFieldId = useId("searchScoreField");
     const rerankerScoreId = useId("rerankerScore");
     const rerankerScoreFieldId = useId("rerankerScoreField");
     const retrieveCountId = useId("retrieveCount");
     const retrieveCountFieldId = useId("retrieveCountField");
-    const maxSubqueryCountId = useId("maxSubqueryCount");
-    const maxSubqueryCountFieldId = useId("maxSubqueryCountField");
-    const resultsMergeStrategyFieldId = useId("resultsMergeStrategy");
+    const agenticReasoningEffortId = useId("agenticReasoningEffort");
+    const agenticReasoningEffortFieldId = useId("agenticReasoningEffortField");
     const includeCategoryId = useId("includeCategory");
     const includeCategoryFieldId = useId("includeCategoryField");
     const excludeCategoryId = useId("excludeCategory");
@@ -121,14 +127,18 @@ export const Settings = ({
     const reasoningEffortFieldId = useId("reasoningEffortField");
     const semanticCaptionsId = useId("semanticCaptions");
     const semanticCaptionsFieldId = useId("semanticCaptionsField");
-    const useOidSecurityFilterId = useId("useOidSecurityFilter");
-    const useOidSecurityFilterFieldId = useId("useOidSecurityFilterField");
-    const useGroupsSecurityFilterId = useId("useGroupsSecurityFilter");
-    const useGroupsSecurityFilterFieldId = useId("useGroupsSecurityFilterField");
     const shouldStreamId = useId("shouldStream");
     const shouldStreamFieldId = useId("shouldStreamField");
     const suggestFollowupQuestionsId = useId("suggestFollowupQuestions");
     const suggestFollowupQuestionsFieldId = useId("suggestFollowupQuestionsField");
+
+    const webSourceDisablesStreamingAndFollowup = !!useWebSource;
+
+    const retrievalReasoningOptions: IDropdownOption[] = [
+        { key: "minimal", text: t("labels.agenticReasoningEffortOptions.minimal") },
+        { key: "low", text: t("labels.agenticReasoningEffortOptions.low") },
+        { key: "medium", text: t("labels.agenticReasoningEffortOptions.medium") }
+    ];
 
     const renderLabel = (props: RenderLabelType | undefined, labelId: string, fieldId: string, helpText: string) => (
         <HelpCallout labelId={labelId} fieldId={fieldId} helpText={helpText} label={props?.label} />
@@ -136,55 +146,104 @@ export const Settings = ({
 
     return (
         <div className={className}>
-            <TextField
-                id={promptTemplateFieldId}
-                className={styles.settingsSeparator}
-                defaultValue={promptTemplate}
-                label={t("labels.promptTemplate")}
-                multiline
-                autoAdjustHeight
-                onChange={(_ev, val) => onChange("promptTemplate", val || "")}
-                aria-labelledby={promptTemplateId}
-                onRenderLabel={props => renderLabel(props, promptTemplateId, promptTemplateFieldId, t("helpTexts.promptTemplate"))}
-            />
+            {streamingEnabled && (
+                <>
+                    <Checkbox
+                        id={shouldStreamFieldId}
+                        className={styles.settingsSeparator}
+                        checked={webSourceDisablesStreamingAndFollowup ? false : shouldStream}
+                        label={t("labels.shouldStream")}
+                        onChange={(_ev, checked) => onChange("shouldStream", !!checked)}
+                        aria-labelledby={shouldStreamId}
+                        disabled={webSourceDisablesStreamingAndFollowup}
+                        onRenderLabel={props => renderLabel(props, shouldStreamId, shouldStreamFieldId, t("helpTexts.streamChat"))}
+                    />
 
-            <TextField
-                id={temperatureFieldId}
-                className={styles.settingsSeparator}
-                label={t("labels.temperature")}
-                type="number"
-                min={0}
-                max={1}
-                step={0.1}
-                defaultValue={temperature.toString()}
-                onChange={(_ev, val) => onChange("temperature", parseFloat(val || "0"))}
-                aria-labelledby={temperatureId}
-                onRenderLabel={props => renderLabel(props, temperatureId, temperatureFieldId, t("helpTexts.temperature"))}
-            />
+                    <Checkbox
+                        id={suggestFollowupQuestionsFieldId}
+                        className={styles.settingsSeparator}
+                        checked={webSourceDisablesStreamingAndFollowup ? false : useSuggestFollowupQuestions}
+                        label={t("labels.useSuggestFollowupQuestions")}
+                        onChange={(_ev, checked) => onChange("useSuggestFollowupQuestions", !!checked)}
+                        aria-labelledby={suggestFollowupQuestionsId}
+                        disabled={webSourceDisablesStreamingAndFollowup}
+                        onRenderLabel={props =>
+                            renderLabel(props, suggestFollowupQuestionsId, suggestFollowupQuestionsFieldId, t("helpTexts.suggestFollowupQuestions"))
+                        }
+                    />
+                </>
+            )}
 
-            <TextField
-                id={seedFieldId}
-                className={styles.settingsSeparator}
-                label={t("labels.seed")}
-                type="text"
-                defaultValue={seed?.toString() || ""}
-                onChange={(_ev, val) => onChange("seed", val ? parseInt(val) : null)}
-                aria-labelledby={seedId}
-                onRenderLabel={props => renderLabel(props, seedId, seedFieldId, t("helpTexts.seed"))}
-            />
+            <h3 className={styles.sectionHeader}>{t("searchSettings")}</h3>
 
             {showAgenticRetrievalOption && (
                 <Checkbox
                     id={agenticRetrievalFieldId}
                     className={styles.settingsSeparator}
-                    checked={useAgenticRetrieval}
-                    label={t("labels.useAgenticRetrieval")}
-                    onChange={(_ev, checked) => onChange("useAgenticRetrieval", !!checked)}
+                    checked={useAgenticKnowledgeBase}
+                    label={t("labels.useAgenticKnowledgeBase")}
+                    onChange={(_ev, checked) => onChange("useAgenticKnowledgeBase", !!checked)}
                     aria-labelledby={agenticRetrievalId}
-                    onRenderLabel={props => renderLabel(props, agenticRetrievalId, agenticRetrievalFieldId, t("helpTexts.suggestFollowupQuestions"))}
+                    onRenderLabel={props => renderLabel(props, agenticRetrievalId, agenticRetrievalFieldId, t("helpTexts.useAgenticKnowledgeBase"))}
                 />
             )}
-            {!useAgenticRetrieval && !useGPT4V && (
+
+            {showAgenticRetrievalOption && useAgenticKnowledgeBase && (
+                <Dropdown
+                    id={agenticReasoningEffortFieldId}
+                    className={styles.settingsSeparator}
+                    label={t("labels.agenticReasoningEffort")}
+                    selectedKey={agenticReasoningEffort}
+                    onChange={(_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IDropdownOption) => {
+                        const newValue = option?.key?.toString() ?? agenticReasoningEffort;
+                        onChange("agenticReasoningEffort", newValue);
+                        // If selecting minimal, disable and deselect web source
+                        if (newValue === "minimal" && useWebSource) {
+                            onChange("useWebSource", false);
+                        }
+                    }}
+                    aria-labelledby={agenticReasoningEffortId}
+                    options={retrievalReasoningOptions}
+                    onRenderLabel={props => renderLabel(props, agenticReasoningEffortId, agenticReasoningEffortFieldId, t("helpTexts.agenticReasoningEffort"))}
+                />
+            )}
+
+            {showAgenticRetrievalOption && useAgenticKnowledgeBase && showWebSourceOption && (
+                <Checkbox
+                    id={webSourceFieldId}
+                    className={styles.settingsSeparator}
+                    checked={useWebSource}
+                    label={t("labels.useWebSource")}
+                    onChange={(_ev, checked) => {
+                        onChange("useWebSource", !!checked);
+                        // If enabling web source, disable streaming and follow-up questions
+                        if (checked) {
+                            if (shouldStream) {
+                                onChange("shouldStream", false);
+                            }
+                            if (useSuggestFollowupQuestions) {
+                                onChange("useSuggestFollowupQuestions", false);
+                            }
+                        }
+                    }}
+                    aria-labelledby={webSourceId}
+                    disabled={!useAgenticKnowledgeBase || agenticReasoningEffort === "minimal"}
+                    onRenderLabel={props => renderLabel(props, webSourceId, webSourceFieldId, t("helpTexts.useWebSource"))}
+                />
+            )}
+            {showAgenticRetrievalOption && useAgenticKnowledgeBase && showSharePointSourceOption && (
+                <Checkbox
+                    id={sharePointSourceFieldId}
+                    className={styles.settingsSeparator}
+                    checked={useSharePointSource}
+                    label={t("labels.useSharePointSource")}
+                    onChange={(_ev, checked) => onChange("useSharePointSource", !!checked)}
+                    aria-labelledby={sharePointSourceId}
+                    disabled={!useAgenticKnowledgeBase}
+                    onRenderLabel={props => renderLabel(props, sharePointSourceId, sharePointSourceFieldId, t("helpTexts.useSharePointSource"))}
+                />
+            )}
+            {!useAgenticKnowledgeBase && (
                 <TextField
                     id={searchScoreFieldId}
                     className={styles.settingsSeparator}
@@ -215,52 +274,20 @@ export const Settings = ({
                 />
             )}
 
-            {showAgenticRetrievalOption && useAgenticRetrieval && (
+            {!useAgenticKnowledgeBase && (
                 <TextField
-                    id={maxSubqueryCountFieldId}
+                    id={retrieveCountFieldId}
                     className={styles.settingsSeparator}
-                    label={t("labels.maxSubqueryCount")}
+                    label={t("labels.retrieveCount")}
                     type="number"
-                    min={2}
-                    max={40}
-                    defaultValue={maxSubqueryCount.toString()}
-                    onChange={(_ev, val) => onChange("maxSubqueryCount", parseInt(val || "10"))}
-                    aria-labelledby={maxSubqueryCountId}
-                    onRenderLabel={props => renderLabel(props, maxSubqueryCountId, maxSubqueryCountFieldId, t("helpTexts.maxSubqueryCount"))}
+                    min={1}
+                    max={50}
+                    defaultValue={retrieveCount.toString()}
+                    onChange={(_ev, val) => onChange("retrieveCount", parseInt(val || "3"))}
+                    aria-labelledby={retrieveCountId}
+                    onRenderLabel={props => renderLabel(props, retrieveCountId, retrieveCountFieldId, t("helpTexts.retrieveNumber"))}
                 />
             )}
-
-            {showAgenticRetrievalOption && useAgenticRetrieval && (
-                <Dropdown
-                    id={resultsMergeStrategyFieldId}
-                    className={styles.settingsSeparator}
-                    label={t("labels.resultsMergeStrategy")}
-                    selectedKey={resultsMergeStrategy}
-                    onChange={(_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IDropdownOption) =>
-                        onChange("resultsMergeStrategy", option?.key)
-                    }
-                    aria-labelledby={includeCategoryId}
-                    options={[
-                        { key: "interleaved", text: t("labels.resultsMergeStrategyOptions.interleaved") },
-                        { key: "descending", text: t("labels.resultsMergeStrategyOptions.descending") }
-                    ]}
-                    onRenderLabel={props => renderLabel(props, includeCategoryId, includeCategoryFieldId, t("helpTexts.resultsMergeStrategy"))}
-                />
-            )}
-
-            <TextField
-                id={retrieveCountFieldId}
-                className={styles.settingsSeparator}
-                label={t("labels.retrieveCount")}
-                type="number"
-                min={1}
-                max={50}
-                defaultValue={retrieveCount.toString()}
-                onChange={(_ev, val) => onChange("retrieveCount", parseInt(val || "3"))}
-                aria-labelledby={retrieveCountId}
-                onRenderLabel={props => renderLabel(props, retrieveCountId, retrieveCountFieldId, t("helpTexts.retrieveNumber"))}
-            />
-
             <Dropdown
                 id={includeCategoryFieldId}
                 className={styles.settingsSeparator}
@@ -274,7 +301,6 @@ export const Settings = ({
                 ]}
                 onRenderLabel={props => renderLabel(props, includeCategoryId, includeCategoryFieldId, t("helpTexts.includeCategory"))}
             />
-
             <TextField
                 id={excludeCategoryFieldId}
                 className={styles.settingsSeparator}
@@ -284,8 +310,7 @@ export const Settings = ({
                 aria-labelledby={excludeCategoryId}
                 onRenderLabel={props => renderLabel(props, excludeCategoryId, excludeCategoryFieldId, t("helpTexts.excludeCategory"))}
             />
-
-            {showSemanticRankerOption && !useAgenticRetrieval && (
+            {showSemanticRankerOption && !useAgenticKnowledgeBase && (
                 <>
                     <Checkbox
                         id={semanticRankerFieldId}
@@ -309,8 +334,7 @@ export const Settings = ({
                     />
                 </>
             )}
-
-            {showQueryRewritingOption && !useAgenticRetrieval && (
+            {showQueryRewritingOption && !useAgenticKnowledgeBase && (
                 <>
                     <Checkbox
                         id={queryRewritingFieldId}
@@ -324,7 +348,6 @@ export const Settings = ({
                     />
                 </>
             )}
-
             {showReasoningEffortOption && (
                 <Dropdown
                     id={reasoningEffortFieldId}
@@ -335,6 +358,7 @@ export const Settings = ({
                     }
                     aria-labelledby={reasoningEffortFieldId}
                     options={[
+                        { key: "minimal", text: t("labels.reasoningEffortOptions.minimal") },
                         { key: "low", text: t("labels.reasoningEffortOptions.low") },
                         { key: "medium", text: t("labels.reasoningEffortOptions.medium") },
                         { key: "high", text: t("labels.reasoningEffortOptions.high") }
@@ -342,80 +366,84 @@ export const Settings = ({
                     onRenderLabel={props => renderLabel(props, queryRewritingFieldId, queryRewritingFieldId, t("helpTexts.reasoningEffort"))}
                 />
             )}
-
-            {useLogin && (
+            {showVectorOption && !useAgenticKnowledgeBase && (
                 <>
-                    <Checkbox
-                        id={useOidSecurityFilterFieldId}
-                        className={styles.settingsSeparator}
-                        checked={useOidSecurityFilter || requireAccessControl}
-                        label={t("labels.useOidSecurityFilter")}
-                        disabled={!loggedIn || requireAccessControl}
-                        onChange={(_ev, checked) => onChange("useOidSecurityFilter", !!checked)}
-                        aria-labelledby={useOidSecurityFilterId}
-                        onRenderLabel={props => renderLabel(props, useOidSecurityFilterId, useOidSecurityFilterFieldId, t("helpTexts.useOidSecurityFilter"))}
-                    />
-                    <Checkbox
-                        id={useGroupsSecurityFilterFieldId}
-                        className={styles.settingsSeparator}
-                        checked={useGroupsSecurityFilter || requireAccessControl}
-                        label={t("labels.useGroupsSecurityFilter")}
-                        disabled={!loggedIn || requireAccessControl}
-                        onChange={(_ev, checked) => onChange("useGroupsSecurityFilter", !!checked)}
-                        aria-labelledby={useGroupsSecurityFilterId}
-                        onRenderLabel={props =>
-                            renderLabel(props, useGroupsSecurityFilterId, useGroupsSecurityFilterFieldId, t("helpTexts.useGroupsSecurityFilter"))
-                        }
+                    <VectorSettings
+                        defaultRetrievalMode={retrievalMode}
+                        defaultSearchTextEmbeddings={searchTextEmbeddings}
+                        defaultSearchImageEmbeddings={searchImageEmbeddings}
+                        showImageOptions={showMultimodalOptions}
+                        updateRetrievalMode={val => onChange("retrievalMode", val)}
+                        updateSearchTextEmbeddings={val => onChange("searchTextEmbeddings", val)}
+                        updateSearchImageEmbeddings={val => onChange("searchImageEmbeddings", val)}
                     />
                 </>
             )}
 
-            {showGPT4VOptions && !useAgenticRetrieval && (
-                <GPT4VSettings
-                    gpt4vInputs={gpt4vInput}
-                    isUseGPT4V={useGPT4V}
-                    updateUseGPT4V={val => onChange("useGPT4V", val)}
-                    updateGPT4VInputs={val => onChange("gpt4vInput", val)}
-                />
-            )}
+            {!useWebSource && (
+                <>
+                    <h3 className={styles.sectionHeader}>{t("llmSettings")}</h3>
+                    <TextField
+                        id={promptTemplateFieldId}
+                        className={styles.settingsSeparator}
+                        defaultValue={promptTemplate}
+                        label={t("labels.promptTemplate")}
+                        multiline
+                        autoAdjustHeight
+                        onChange={(_ev, val) => onChange("promptTemplate", val || "")}
+                        aria-labelledby={promptTemplateId}
+                        onRenderLabel={props => renderLabel(props, promptTemplateId, promptTemplateFieldId, t("helpTexts.promptTemplate"))}
+                    />
+                    <TextField
+                        id={temperatureFieldId}
+                        className={styles.settingsSeparator}
+                        label={t("labels.temperature")}
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        defaultValue={temperature.toString()}
+                        onChange={(_ev, val) => onChange("temperature", parseFloat(val || "0"))}
+                        aria-labelledby={temperatureId}
+                        onRenderLabel={props => renderLabel(props, temperatureId, temperatureFieldId, t("helpTexts.temperature"))}
+                    />
+                    <TextField
+                        id={seedFieldId}
+                        className={styles.settingsSeparator}
+                        label={t("labels.seed")}
+                        type="text"
+                        defaultValue={seed?.toString() || ""}
+                        onChange={(_ev, val) => onChange("seed", val ? parseInt(val) : null)}
+                        aria-labelledby={seedId}
+                        onRenderLabel={props => renderLabel(props, seedId, seedFieldId, t("helpTexts.seed"))}
+                    />
 
-            {showVectorOption && !useAgenticRetrieval && (
-                <VectorSettings
-                    defaultRetrievalMode={retrievalMode}
-                    defaultVectorFields={vectorFields}
-                    showImageOptions={useGPT4V && showGPT4VOptions}
-                    updateVectorFields={val => onChange("vectorFields", val)}
-                    updateRetrievalMode={val => onChange("retrievalMode", val)}
-                />
-            )}
-
-            {/* Streaming checkbox for Chat */}
-            {shouldStream !== undefined && (
-                <Checkbox
-                    id={shouldStreamFieldId}
-                    disabled={!streamingEnabled}
-                    className={styles.settingsSeparator}
-                    checked={shouldStream}
-                    label={t("labels.shouldStream")}
-                    onChange={(_ev, checked) => onChange("shouldStream", !!checked)}
-                    aria-labelledby={shouldStreamId}
-                    onRenderLabel={props => renderLabel(props, shouldStreamId, shouldStreamFieldId, t("helpTexts.streamChat"))}
-                />
-            )}
-
-            {/* Followup questions checkbox for Chat */}
-            {showSuggestFollowupQuestions && (
-                <Checkbox
-                    id={suggestFollowupQuestionsFieldId}
-                    className={styles.settingsSeparator}
-                    checked={useSuggestFollowupQuestions}
-                    label={t("labels.useSuggestFollowupQuestions")}
-                    onChange={(_ev, checked) => onChange("useSuggestFollowupQuestions", !!checked)}
-                    aria-labelledby={suggestFollowupQuestionsId}
-                    onRenderLabel={props =>
-                        renderLabel(props, suggestFollowupQuestionsId, suggestFollowupQuestionsFieldId, t("helpTexts.suggestFollowupQuestions"))
-                    }
-                />
+                    {showMultimodalOptions && !useAgenticKnowledgeBase && (
+                        <fieldset className={styles.fieldset + " " + styles.settingsSeparator}>
+                            <legend className={styles.legend}>{t("labels.llmInputs")}</legend>
+                            <Stack tokens={{ childrenGap: 8 }}>
+                                <Checkbox
+                                    id="sendTextSources"
+                                    label={t("labels.llmInputsOptions.texts")}
+                                    checked={sendTextSources}
+                                    onChange={(_ev, checked) => {
+                                        onChange("sendTextSources", !!checked);
+                                    }}
+                                    onRenderLabel={props => renderLabel(props, "sendTextSourcesLabel", "sendTextSources", t("helpTexts.llmTextInputs"))}
+                                />
+                                <Checkbox
+                                    id="sendImageSources"
+                                    label={t("labels.llmInputsOptions.images")}
+                                    checked={sendImageSources}
+                                    onChange={(_ev, checked) => {
+                                        onChange("sendImageSources", !!checked);
+                                    }}
+                                    onRenderLabel={props => renderLabel(props, "sendImageSourcesLabel", "sendImageSources", t("helpTexts.llmImageInputs"))}
+                                />
+                            </Stack>
+                        </fieldset>
+                    )}
+                </>
             )}
         </div>
     );

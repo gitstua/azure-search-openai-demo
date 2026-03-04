@@ -25,6 +25,7 @@ This solution's backend is written in Python. There are also [**JavaScript**](ht
 
 [![Open in GitHub Codespaces](https://img.shields.io/static/v1?style=for-the-badge&label=GitHub+Codespaces&message=Open&color=brightgreen&logo=github)](https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=599293758&machine=standardLinux32gb&devcontainer_path=.devcontainer%2Fdevcontainer.json&location=WestUs2)
 [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/azure-samples/azure-search-openai-demo)
+[![Open in VS Code for the Web](https://img.shields.io/static/v1?style=for-the-badge&label=VS+Code+for+the+Web&message=Open&color=purple&logo=visualstudiocode)](https://vscode.dev/azure?azdTemplateUrl=https://github.com/azure-samples/azure-search-openai-demo)
 
 ## Important Security Notice
 
@@ -53,15 +54,15 @@ This template, the application code and configuration it contains, has been buil
 
 This sample demonstrates a few approaches for creating ChatGPT-like experiences over your own data using the Retrieval Augmented Generation pattern. It uses Azure OpenAI Service to access a GPT model (gpt-4.1-mini), and Azure AI Search for data indexing and retrieval.
 
-The repo includes sample data so it's ready to try end to end. In this sample application we use a fictitious company called Contoso Electronics, and the experience allows its employees to ask questions about the benefits, internal policies, as well as job descriptions and roles.
+The repo includes sample data so it's ready to try end to end. In this sample application we use a fictitious company called Zava, and the experience allows its employees to ask questions about the benefits, internal policies, as well as job descriptions and roles.
 
 ## Features
 
-- Chat (multi-turn) and Q&A (single turn) interfaces
+- Chat (multi-turn) interface
 - Renders citations and thought process for each answer
 - Includes settings directly in the UI to tweak the behavior and experiment with options
-- Integrates Azure AI Search for indexing and retrieval of documents, with support for [many document formats](/docs/data_ingestion.md#supported-document-formats) as well as [integrated vectorization](/docs/data_ingestion.md#overview-of-integrated-vectorization)
-- Optional usage of [GPT-4 with vision](/docs/gpt4v.md) to reason over image-heavy documents
+- Integrates Azure AI Search for indexing and retrieval of documents, with support for [many document formats](/docs/data_ingestion.md#supported-document-formats) as well as [cloud data ingestion](/docs/data_ingestion.md#cloud-data-ingestion)
+- Optional usage of [multimodal models](/docs/multimodal.md) to reason over image-heavy documents
 - Optional addition of [speech input/output](/docs/deploy_features.md#enabling-speech-inputoutput) for accessibility
 - Optional automation of [user login and data access](/docs/login_and_acl.md) via Microsoft Entra
 - Performance tracing and monitoring with Application Insights
@@ -92,7 +93,7 @@ However, you can try the [Azure pricing calculator](https://azure.com/e/e3490de2
 - Azure AI Search: Basic tier, 1 replica, free level of semantic search. Pricing per hour. [Pricing](https://azure.microsoft.com/pricing/details/search/)
 - Azure Blob Storage: Standard tier with ZRS (Zone-redundant storage). Pricing per storage and read operations. [Pricing](https://azure.microsoft.com/pricing/details/storage/blobs/)
 - Azure Cosmos DB: Only provisioned if you enabled [chat history with Cosmos DB](docs/deploy_features.md#enabling-persistent-chat-history-with-azure-cosmos-db). Serverless tier. Pricing per request unit and storage. [Pricing](https://azure.microsoft.com/pricing/details/cosmos-db/)
-- Azure AI Vision: Only provisioned if you enabled [GPT-4 with vision](docs/gpt4v.md). Pricing per 1K transactions. [Pricing](https://azure.microsoft.com/pricing/details/cognitive-services/computer-vision/)
+- Azure AI Vision: Only provisioned if you enabled [multimodal approach](docs/multimodal.md). Pricing per 1K transactions. [Pricing](https://azure.microsoft.com/pricing/details/cognitive-services/computer-vision/)
 - Azure AI Content Understanding: Only provisioned if you enabled [media description](docs/deploy_features.md#enabling-media-description-with-azure-content-understanding). Pricing per 1K images. [Pricing](https://azure.microsoft.com/pricing/details/content-understanding/)
 - Azure Monitor: Pay-as-you-go tier. Costs based on data ingested. [Pricing](https://azure.microsoft.com/pricing/details/monitor/)
 
@@ -131,7 +132,7 @@ A related option is VS Code Dev Containers, which will open the project in your 
 1. Install the required tools:
 
     - [Azure Developer CLI](https://aka.ms/azure-dev/install)
-    - [Python 3.9, 3.10, or 3.11](https://www.python.org/downloads/)
+    - [Python 3.10, 3.11, 3.12, 3.13, or 3.14](https://www.python.org/downloads/)
       - **Important**: Python and the pip package manager must be in the path in Windows for the setup scripts to work.
       - **Important**: Ensure you can run `python --version` from console. On Ubuntu, you might need to run `sudo apt install python-is-python3` to link `python` to `python3`.
     - [Node.js 20+](https://nodejs.org/download/)
@@ -228,7 +229,7 @@ See more tips in [the local development guide](docs/localdev.md).
 
 Once in the web app:
 
-- Try different topics in chat or Q&A context. For chat, try follow up questions, clarifications, ask to simplify or elaborate on answer, etc.
+- Try different topics in chat. Try follow up questions, clarifications, ask to simplify or elaborate on answer, etc.
 - Explore citations and sources
 - Click on "settings" to try different options, tweak prompts, etc.
 
@@ -255,13 +256,14 @@ You can find extensive documentation in the [docs](docs/README.md) folder:
   - [Enabling optional features](docs/deploy_features.md)
     - [All features](docs/deploy_features.md)
     - [Login and access control](docs/login_and_acl.md)
-    - [GPT-4 Turbo with Vision](docs/gpt4v.md)
+    - [Multimodal](docs/multimodal.md)
     - [Reasoning](docs/reasoning.md)
     - [Private endpoints](docs/deploy_private.md)
     - [Agentic retrieval](docs/agentic_retrieval.md)
   - [Sharing deployment environments](docs/sharing_environments.md)
 - [Local development](docs/localdev.md)
 - [Customizing the app](docs/customization.md)
+- [App architecture](docs/architecture.md)
 - [HTTP Protocol](docs/http_protocol.md)
 - [Data ingestion](docs/data_ingestion.md)
 - [Evaluation](docs/evaluation.md)

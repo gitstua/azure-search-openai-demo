@@ -79,8 +79,6 @@ param serviceType string = ''
 @description('The target port for the container')
 param targetPort int = 80
 
-param workloadProfile string = 'Consumption'
-
 resource userIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = if (!empty(identityName)) {
   name: identityName
 }
@@ -106,7 +104,7 @@ module containerRegistryAccess '../security/registry-access.bicep' = if (usePriv
   name: '${deployment().name}-registry-access'
   params: {
     containerRegistryName: containerRegistryName
-    principalId: usePrivateRegistry ? userIdentity.properties.principalId : ''
+    principalId: usePrivateRegistry ? userIdentity!.properties.principalId : ''
   }
 }
 
@@ -125,7 +123,6 @@ resource app 'Microsoft.App/containerApps@2023-05-02-preview' = {
   }
   properties: {
     managedEnvironmentId: containerAppsEnvironment.id
-    workloadProfileName: workloadProfile
     configuration: {
       activeRevisionsMode: revisionMode
       ingress: ingressEnabled ? {
@@ -177,7 +174,7 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2023-05-01'
 }
 
 output defaultDomain string = containerAppsEnvironment.properties.defaultDomain
-output identityPrincipalId string = normalizedIdentityType == 'None' ? '' : (empty(identityName) ? app.identity.principalId : userIdentity.properties.principalId)
+output identityPrincipalId string = normalizedIdentityType == 'None' ? '' : (empty(identityName) ? app.identity.principalId : userIdentity!.properties.principalId)
 output identityResourceId string = normalizedIdentityType == 'UserAssigned' ? resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', userIdentity.name) : ''
 output imageName string = imageName
 output name string = app.name

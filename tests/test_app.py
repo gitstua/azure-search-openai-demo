@@ -1,11 +1,13 @@
 import json
 import os
+from typing import Any
 from unittest import mock
 
 import pytest
 import quart.testing.app
 from httpx import Request, Response
 from openai import BadRequestError
+from quart import Response as QuartResponse
 
 import app
 
@@ -47,6 +49,18 @@ def messages_contains_text(messages, text):
     return False
 
 
+def pop_citation_activity_details(result: dict[str, Any] | None):  # type: ignore[name-defined]
+    if result is None:
+        return None
+    context = result.get("context") if isinstance(result, dict) else None
+    if not isinstance(context, dict):
+        return None
+    data_points = context.get("data_points")
+    if not isinstance(data_points, dict):
+        return None
+    return data_points.pop("citation_activity_details", None)
+
+
 @pytest.mark.asyncio
 async def test_missing_env_vars():
     with mock.patch.dict(os.environ, clear=True):
@@ -85,231 +99,24 @@ async def test_cors_notallowed(client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_assets_route_delegates_to_send_from_directory(client, monkeypatch):
+    async def fake_send_from_directory(directory, requested_path):
+        assert "assets" in str(directory)
+        assert requested_path == "bundle.js"
+        return QuartResponse("console.log('hi')", mimetype="application/javascript")
+
+    monkeypatch.setattr(app, "send_from_directory", fake_send_from_directory)
+
+    response = await client.get("/assets/bundle.js")
+    assert response.status_code == 200
+    assert await response.get_data() == b"console.log('hi')"
+
+
+@pytest.mark.asyncio
 async def test_cors_allowed(client) -> None:
     response = await client.get("/", headers={"Origin": "https://frontend.com"})
     assert response.access_control_allow_origin == "https://frontend.com"
     assert "Access-Control-Allow-Origin" in response.headers
-
-
-@pytest.mark.asyncio
-async def test_ask_request_must_be_json(client):
-    response = await client.post("/ask")
-    assert response.status_code == 415
-    result = await response.get_json()
-    assert result["error"] == "request must be json"
-
-
-@pytest.mark.asyncio
-async def test_ask_handle_exception(client, monkeypatch, snapshot, caplog):
-    monkeypatch.setattr(
-        "approaches.retrievethenread.RetrieveThenReadApproach.run",
-        mock.Mock(side_effect=ZeroDivisionError("something bad happened")),
-    )
-
-    response = await client.post(
-        "/ask",
-        json={"messages": [{"content": "What is the capital of France?", "role": "user"}]},
-    )
-    assert response.status_code == 500
-    result = await response.get_json()
-    assert "Exception in /ask: something bad happened" in caplog.text
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_handle_exception_contentsafety(client, monkeypatch, snapshot, caplog):
-    monkeypatch.setattr(
-        "approaches.retrievethenread.RetrieveThenReadApproach.run",
-        mock.Mock(side_effect=filtered_response),
-    )
-
-    response = await client.post(
-        "/ask",
-        json={"messages": [{"content": "How do I do something bad?", "role": "user"}]},
-    )
-    assert response.status_code == 400
-    result = await response.get_json()
-    assert "Exception in /ask: The response was filtered" in caplog.text
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_handle_exception_contextlength(client, monkeypatch, snapshot, caplog):
-    monkeypatch.setattr(
-        "approaches.retrievethenread.RetrieveThenReadApproach.run",
-        mock.Mock(side_effect=contextlength_response),
-    )
-
-    response = await client.post(
-        "/ask",
-        json={"messages": [{"content": "Super long message with lots of sources.", "role": "user"}]},
-    )
-    assert response.status_code == 500
-    result = await response.get_json()
-    assert (
-        "Exception in /ask: This model's maximum context length is 4096 tokens. However, your messages resulted in 5069 tokens. Please reduce the length of the messages."
-        in caplog.text
-    )
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text"},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text_agent(agent_client, snapshot):
-    response = await agent_client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text", "use_agentic_retrieval": True},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text_filter(auth_client, snapshot):
-    response = await auth_client.post(
-        "/ask",
-        headers={"Authorization": "Bearer MockToken"},
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "retrieval_mode": "text",
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
-                    "exclude_category": "excluded",
-                },
-            },
-        },
-    )
-    assert response.status_code == 200
-    assert (
-        auth_client.config[app.CONFIG_SEARCH_CLIENT].filter
-        == "category ne 'excluded' and (oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z')))"
-    )
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text_agent_filter(agent_auth_client, snapshot):
-    response = await agent_auth_client.post(
-        "/ask",
-        headers={"Authorization": "Bearer MockToken"},
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "retrieval_mode": "text",
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
-                    "exclude_category": "excluded",
-                    "use_agentic_retrieval": True,
-                },
-            },
-        },
-    )
-    assert response.status_code == 200
-    assert (
-        agent_auth_client.config[app.CONFIG_AGENT_CLIENT].filter
-        == "category ne 'excluded' and (oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z')))"
-    )
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text_filter_public_documents(auth_public_documents_client, snapshot):
-    response = await auth_public_documents_client.post(
-        "/ask",
-        headers={"Authorization": "Bearer MockToken"},
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "retrieval_mode": "text",
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
-                    "exclude_category": "excluded",
-                },
-            },
-        },
-    )
-    assert response.status_code == 200
-    assert (
-        auth_public_documents_client.config[app.CONFIG_SEARCH_CLIENT].filter
-        == "category ne 'excluded' and ((oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z'))) or (not oids/any() and not groups/any()))"
-    )
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text_semanticranker(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text", "semantic_ranker": True},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_text_semanticcaptions(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text", "semantic_captions": True},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_rtr_hybrid(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "hybrid"},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
 @pytest.mark.asyncio
@@ -321,11 +128,78 @@ async def test_chat_request_must_be_json(client):
 
 
 @pytest.mark.asyncio
+async def test_send_text_sources_false(client):
+    """When send_text_sources is False, text sources should be omitted while citations remain."""
+    response = await client.post(
+        "/chat",
+        json={
+            "messages": [{"content": "What is the capital of France?", "role": "user"}],
+            "context": {"overrides": {"retrieval_mode": "text", "send_text_sources": False}},
+        },
+    )
+    assert response.status_code == 200
+    result = await response.get_json()
+    data_points = result["context"]["data_points"]
+    assert data_points["text"] == []
+    assert "citations" in data_points and len(data_points["citations"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_search_image_embeddings_ignored_without_multimodal(client):
+    """Sending search_image_embeddings=True when USE_MULTIMODAL is false should be ignored and still succeed (200)."""
+    response = await client.post(
+        "/chat",
+        json={
+            "messages": [{"content": "What is the capital of France?", "role": "user"}],
+            "context": {"overrides": {"search_image_embeddings": True, "send_image_sources": True}},
+        },
+    )
+    assert response.status_code == 200
+    result = await response.get_json()
+    # Ensure the thought step recorded search_image_embeddings as False
+    search_thought = [
+        thought for thought in result["context"]["thoughts"] if thought["title"].startswith("Search using")
+    ][0]
+    assert search_thought["props"]["search_image_embeddings"] is False
+
+
+@pytest.mark.asyncio
+async def test_content_file_missing_content_settings(auth_client, monkeypatch):
+    blob_manager = auth_client.config[app.CONFIG_GLOBAL_BLOB_MANAGER]
+
+    async def fake_download_blob(_path, user_oid=None, container=None):
+        return b"data", {}
+
+    monkeypatch.setattr(blob_manager, "download_blob", fake_download_blob)
+
+    response = await auth_client.get("/content/file.pdf", headers={"Authorization": "Bearer token"})
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_request_must_be_json(client):
     response = await client.post("/chat/stream")
     assert response.status_code == 415
     result = await response.get_json()
     assert result["error"] == "request must be json"
+
+
+def test_json_encoder_drops_optional_fields():
+    data_points = app.DataPoints(
+        text=["One"], citations=["a"], external_results_metadata=None, citation_activity_details=None
+    )
+    encoded = app.JSONEncoder().encode(data_points)
+    assert "citation_activity_details" not in encoded
+    assert '"text": ["One"]' in encoded
+
+
+@pytest.mark.asyncio
+async def test_auth_setup_returns_payload(client):
+    response = await client.get("/auth_setup")
+    assert response.status_code == 200
+    payload = await response.get_json()
+    assert isinstance(payload, dict)
+    assert payload  # should contain configuration values
 
 
 @pytest.mark.asyncio
@@ -508,19 +382,18 @@ async def test_chat_text(client, snapshot):
 
 
 @pytest.mark.asyncio
-async def test_chat_text_agent(agent_client, snapshot):
-    response = await agent_client.post(
+async def test_chat_text_agent(knowledgebase_client, snapshot):
+    response = await knowledgebase_client.post(
         "/chat",
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
-                "overrides": {"use_agentic_retrieval": True},
+                "overrides": {"use_agentic_knowledgebase": True},
             },
         },
     )
     assert response.status_code == 200
     result = await response.get_json()
-    assert result["context"]["thoughts"][0]["props"]["max_docs_for_reranker"] == 500
     assert result["context"]["thoughts"][0]["props"]["reranker_threshold"] == 0
     snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
@@ -535,44 +408,36 @@ async def test_chat_text_filter(auth_client, snapshot):
             "context": {
                 "overrides": {
                     "retrieval_mode": "text",
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
                     "exclude_category": "excluded",
                 },
             },
         },
     )
     assert response.status_code == 200
-    assert (
-        auth_client.config[app.CONFIG_SEARCH_CLIENT].filter
-        == "category ne 'excluded' and (oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z')))"
-    )
+    assert auth_client.config[app.CONFIG_SEARCH_CLIENT].filter == "category ne 'excluded'"
+    assert auth_client.config[app.CONFIG_SEARCH_CLIENT].access_token == "MockToken"
     result = await response.get_json()
     snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
 @pytest.mark.asyncio
-async def test_chat_text_filter_agent(agent_auth_client, snapshot):
-    response = await agent_auth_client.post(
+async def test_chat_text_filter_agent(knowledgebase_auth_client, snapshot):
+    response = await knowledgebase_auth_client.post(
         "/chat",
         headers={"Authorization": "Bearer MockToken"},
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
                 "overrides": {
-                    "use_agentic_retrieval": True,
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
+                    "use_agentic_knowledgebase": True,
                     "exclude_category": "excluded",
                 },
             },
         },
     )
     assert response.status_code == 200
-    assert (
-        agent_auth_client.config[app.CONFIG_AGENT_CLIENT].filter
-        == "category ne 'excluded' and (oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z')))"
-    )
+    assert knowledgebase_auth_client.config[app.CONFIG_KNOWLEDGEBASE_CLIENT].filter == "category ne 'excluded'"
+    assert knowledgebase_auth_client.config[app.CONFIG_KNOWLEDGEBASE_CLIENT].access_token == "MockToken"
     result = await response.get_json()
     snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
@@ -587,18 +452,14 @@ async def test_chat_text_filter_public_documents(auth_public_documents_client, s
             "context": {
                 "overrides": {
                     "retrieval_mode": "text",
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
                     "exclude_category": "excluded",
                 },
             },
         },
     )
     assert response.status_code == 200
-    assert (
-        auth_public_documents_client.config[app.CONFIG_SEARCH_CLIENT].filter
-        == "category ne 'excluded' and ((oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z'))) or (not oids/any() and not groups/any()))"
-    )
+    assert auth_public_documents_client.config[app.CONFIG_SEARCH_CLIENT].filter == "category ne 'excluded'"
+    assert auth_public_documents_client.config[app.CONFIG_SEARCH_CLIENT].access_token == "MockToken"
     result = await response.get_json()
     if result.get("session_state"):
         del result["session_state"]
@@ -655,59 +516,6 @@ async def test_chat_prompt_template(client, snapshot):
 
 
 @pytest.mark.asyncio
-async def test_ask_prompt_template(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text", "prompt_template": "You are a cat."},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    assert result["context"]["thoughts"][2]["description"][0]["content"].startswith("You are a cat.")
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_chat_prompt_template_concat(client, snapshot):
-    response = await client.post(
-        "/chat",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text", "prompt_template": ">>> Meow like a cat."},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    assert result["context"]["thoughts"][3]["description"][0]["content"].startswith("Assistant helps")
-    assert result["context"]["thoughts"][3]["description"][0]["content"].endswith("Meow like a cat.")
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
-async def test_ask_prompt_template_concat(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "What is the capital of France?", "role": "user"}],
-            "context": {
-                "overrides": {"retrieval_mode": "text", "prompt_template": ">>> Meow like a cat."},
-            },
-        },
-    )
-    assert response.status_code == 200
-    result = await response.get_json()
-    assert result["context"]["thoughts"][2]["description"][0]["content"].startswith("You are an intelligent assistant")
-    assert result["context"]["thoughts"][2]["description"][0]["content"].endswith("Meow like a cat.")
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
-
-
-@pytest.mark.asyncio
 async def test_chat_seed(client, snapshot):
     response = await client.post(
         "/chat",
@@ -750,7 +558,10 @@ async def test_chat_hybrid_semantic_ranker(client, snapshot):
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
-                "overrides": {"retrieval_mode": "hybrid", "semantic_ranker": True},
+                "overrides": {
+                    "retrieval_mode": "hybrid",
+                    "semantic_ranker": True,
+                },
             },
         },
     )
@@ -770,7 +581,11 @@ async def test_chat_hybrid_semantic_captions(client, snapshot):
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
-                "overrides": {"retrieval_mode": "hybrid", "semantic_ranker": True, "semantic_captions": True},
+                "overrides": {
+                    "retrieval_mode": "hybrid",
+                    "semantic_ranker": True,
+                    "semantic_captions": True,
+                },
             },
         },
     )
@@ -809,7 +624,10 @@ async def test_chat_vector_semantic_ranker(client, snapshot):
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
-                "overrides": {"retrieval_mode": "vectors", "semantic_ranker": True},
+                "overrides": {
+                    "retrieval_mode": "vectors",
+                    "semantic_ranker": True,
+                },
             },
         },
     )
@@ -904,18 +722,14 @@ async def test_chat_stream_text_filter(auth_client, snapshot):
             "context": {
                 "overrides": {
                     "retrieval_mode": "text",
-                    "use_oid_security_filter": True,
-                    "use_groups_security_filter": True,
                     "exclude_category": "excluded",
                 }
             },
         },
     )
     assert response.status_code == 200
-    assert (
-        auth_client.config[app.CONFIG_SEARCH_CLIENT].filter
-        == "category ne 'excluded' and (oids/any(g:search.in(g, 'OID_X')) or groups/any(g:search.in(g, 'GROUP_Y, GROUP_Z')))"
-    )
+    assert auth_client.config[app.CONFIG_SEARCH_CLIENT].filter == "category ne 'excluded'"
+    assert auth_client.config[app.CONFIG_SEARCH_CLIENT].access_token == "MockToken"
     result = await response.get_data()
     snapshot.assert_match(result, "result.jsonlines")
 
@@ -985,7 +799,9 @@ async def test_chat_followup(client, snapshot):
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
-                "overrides": {"suggest_followup_questions": True},
+                "overrides": {
+                    "suggest_followup_questions": True,
+                },
             },
         },
     )
@@ -1003,7 +819,9 @@ async def test_chat_stream_followup(client, snapshot):
         json={
             "messages": [{"content": "What is the capital of France?", "role": "user"}],
             "context": {
-                "overrides": {"suggest_followup_questions": True},
+                "overrides": {
+                    "suggest_followup_questions": True,
+                },
             },
         },
     )
@@ -1013,19 +831,10 @@ async def test_chat_stream_followup(client, snapshot):
 
 
 @pytest.mark.asyncio
-async def test_chat_vision(client, snapshot):
-    response = await client.post(
+async def test_chat_vision(monkeypatch, vision_client, snapshot):
+    response = await vision_client.post(
         "/chat",
-        json={
-            "messages": [{"content": "Are interest rates high?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "use_gpt4v": True,
-                    "gpt4v_input": "textAndImages",
-                    "vector_fields": "textAndImageEmbeddings",
-                },
-            },
-        },
+        json={"messages": [{"content": "Are interest rates high?", "role": "user"}]},
     )
     assert response.status_code == 200
     result = await response.get_json()
@@ -1033,19 +842,10 @@ async def test_chat_vision(client, snapshot):
 
 
 @pytest.mark.asyncio
-async def test_chat_stream_vision(client, snapshot):
-    response = await client.post(
+async def test_chat_stream_vision(vision_client, snapshot):
+    response = await vision_client.post(
         "/chat/stream",
-        json={
-            "messages": [{"content": "Are interest rates high?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "use_gpt4v": True,
-                    "gpt4v_input": "textAndImages",
-                    "vector_fields": "textAndImageEmbeddings",
-                },
-            },
-        },
+        json={"messages": [{"content": "Are interest rates high?", "role": "user"}]},
     )
     assert response.status_code == 200
     result = await response.get_data()
@@ -1053,41 +853,13 @@ async def test_chat_stream_vision(client, snapshot):
 
 
 @pytest.mark.asyncio
-async def test_chat_vision_vectors(client, snapshot):
-    response = await client.post(
+async def test_chat_vision_user(monkeypatch, vision_auth_client, mock_user_directory_client, snapshot):
+    response = await vision_auth_client.post(
         "/chat",
-        json={
-            "messages": [{"content": "Are interest rates high?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "use_gpt4v": True,
-                    "gpt4v_input": "textAndImages",
-                    "vector_fields": "textAndImageEmbeddings",
-                    "retrieval_mode": "vectors",
-                },
-            },
-        },
+        headers={"Authorization": "Bearer MockToken"},
+        json={"messages": [{"content": "Flowers in westbrae nursery logo?", "role": "user"}]},
     )
-    assert response.status_code == 200
-    result = await response.get_json()
-    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
-
-@pytest.mark.asyncio
-async def test_ask_vision(client, snapshot):
-    response = await client.post(
-        "/ask",
-        json={
-            "messages": [{"content": "Are interest rates high?", "role": "user"}],
-            "context": {
-                "overrides": {
-                    "use_gpt4v": True,
-                    "gpt4v_input": "textAndImages",
-                    "vector_fields": "textAndImageEmbeddings",
-                },
-            },
-        },
-    )
     assert response.status_code == 200
     result = await response.get_json()
     snapshot.assert_match(json.dumps(result, indent=4), "result.json")

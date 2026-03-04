@@ -14,24 +14,30 @@ module main 'main.bicep' = {
     environmentName: environmentName
     location: location
     appServiceSkuName: 'B1'
-    computerVisionSkuName: 'S1'
+    azureContainerAppsWorkloadProfile: 'Consumption'
+    cosmosDbSkuName: 'serverless'
+    defaultReasoningEffort: 'medium'
     documentIntelligenceResourceGroupLocation: location
     documentIntelligenceSkuName: 'S0'
     openAiHost: 'azure'
-    openAiResourceGroupLocation: location
+    openAiLocation: location
+    searchFieldNameEmbedding: 'embedding'
     searchIndexName: 'gptkbindex'
     searchQueryLanguage: 'en-us'
     searchQuerySpeller: 'lexicon'
+    searchServiceQueryRewriting: 'none'
     searchServiceSemanticRankerLevel: 'free'
     searchServiceSkuName: 'standard'
     speechServiceSkuName: 'S0'
     storageSkuName: 'Standard_LRS'
+    useAgenticKnowledgeBase: false
     useApplicationInsights: false
     useVectors: true
-    useGPT4V: false
+    useMultimodal: true
     enableLanguagePicker: false
     useSpeechInputBrowser: false
     useSpeechOutputBrowser: false
+    webAppExists: false
 
     // Test the secure configuration
     enableUnauthenticatedAccess: false

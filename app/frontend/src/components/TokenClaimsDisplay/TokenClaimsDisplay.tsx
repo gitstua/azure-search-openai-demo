@@ -83,9 +83,9 @@ export const TokenClaimsDisplay = () => {
     ];
 
     return (
-        <div>
+        <div style={{ marginTop: "20px" }}>
             <Label>ID Token Claims</Label>
-            <DataGrid items={items} columns={columns} sortable getRowId={item => item.name}>
+            <DataGrid items={items} columns={columns} sortable getRowId={(item: Claim) => item.name}>
                 <DataGridHeader>
                     <DataGridRow>{({ renderHeaderCell }) => <DataGridHeaderCell>{renderHeaderCell()}</DataGridHeaderCell>}</DataGridRow>
                 </DataGridHeader>

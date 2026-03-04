@@ -54,6 +54,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+coverage_report.html
 
 # Translations
 *.mo
@@ -133,6 +134,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# ty
+.ty_cache/
+
 # Pyre type checker
 .pyre/
 
@@ -146,6 +150,9 @@ cython_debug/
 npm-debug.log*
 node_modules
 static/
+
+app/functions/*/prepdocslib/
+app/functions/*/requirements.txt
 
 data/**/*.md5
 

@@ -55,7 +55,7 @@ After 1000 queries, you will get an error message about exceeding the semantic r
   ```
 
 * The search service can handle fairly large indexes, but it does have per-SKU limits on storage sizes, maximum vector dimensions, etc. You may want to upgrade the SKU to either a Standard or Storage Optimized SKU, depending on your expected load.
-However, you [cannot change the SKU](https://learn.microsoft.com/azure/search/search-sku-tier#tier-upgrade-or-downgrade) of an existing search service, so you will need to re-index the data or manually copy it over.
+You can [switch between Basic, S1, S2, and S3 tiers](https://learn.microsoft.com/azure/search/search-capacity-planning#change-your-pricing-tier), but you can't switch to or from Free, S3HD, L1, or L2. If you need to change to one of those tiers, you will need to create a new search service and re-index the data or manually copy it over.
 You can change the SKU by setting the `AZURE_SEARCH_SERVICE_SKU` azd environment variable to [an allowed SKU](https://learn.microsoft.com/azure/templates/microsoft.search/searchservices?pivots=deployment-language-bicep#sku).
 
   ```shell
@@ -106,7 +106,7 @@ First make sure you have the locust package installed in your Python environment
 python -m pip install locust
 ```
 
-Then run the locust command, specifying the name of the User class to use from `locustfile.py`. We've provided a `ChatUser` class that simulates a user asking questions and receiving answers, as well as a `ChatVisionUser` to simulate a user asking questions with the [GPT-4 vision mode enabled](/docs/gpt4v.md).
+Then run the locust command, specifying the name of the User class to use from `locustfile.py`. We've provided a `ChatUser` class that simulates a user asking questions and receiving answers.
 
 ```shell
 locust ChatUser
